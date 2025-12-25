@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+requests
+beautifulsoup4
+lxml
+sentence-transformers
+python-dotenv
+tqdm
+httpx
+pydantic
+pydantic-settings
+faiss-cpu
+numpy

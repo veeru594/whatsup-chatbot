@@ -1,0 +1,128 @@
+# bot/responder.py
+from models.embedder import Embedder
+import faiss
+import numpy as np
+import pickle
+import os
+from config.settings import settings
+from models.ai_client import call_openai
+
+# FAISS paths
+INDEX_PATH = os.path.join(settings.CHROMA_DIR, "faiss.index")
+METADATA_PATH = os.path.join(settings.CHROMA_DIR, "metadata.pkl")
+
+# Load embedder
+embedder = Embedder()
+
+# Load FAISS index and metadata
+def load_index():
+    """Load FAISS index and metadata."""
+    if not os.path.exists(INDEX_PATH) or not os.path.exists(METADATA_PATH):
+        raise FileNotFoundError(
+            f"Index not found at {INDEX_PATH}. "
+            "Please run the scraper first: python -c \"from scraper.scrape import crawl_and_build; crawl_and_build()\""
+        )
+    
+    index = faiss.read_index(INDEX_PATH)
+    with open(METADATA_PATH, 'rb') as f:
+        metadata = pickle.load(f)
+    
+    return index, metadata
+
+SYSTEM_PROMPT = """
+You are a helpful customer support assistant for the company. Use only the provided source excerpts to answer user questions. 
+If the answer is not in the sources, say you will escalate to a human and ask for contact details.
+Be concise, friendly, and always include a summary of the action if any (e.g., steps, links).
+Keep your response under 300 words.
+"""
+
+def retrieve_relevant(user_message, k=4):
+    """
+    Retrieve relevant document chunks from FAISS.
+    
+    Args:
+        user_message: User query
+        k: Number of results to retrieve
+    
+    Returns:
+        Formatted string with relevant sources and minimum distance
+    """
+    try:
+        index, metadata = load_index()
+    except FileNotFoundError as e:
+        print(f"Error: {e}")
+        return "No knowledge base found.", 1.0
+    
+    # Generate query embedding
+    q_emb = embedder.embed_query(user_message)
+    q_emb_array = np.array([q_emb], dtype='float32')
+    
+    # Search FAISS index
+    distances, indices = index.search(q_emb_array, k)
+    
+    # Format results
+    pairs = []
+    for dist, idx in zip(distances[0], indices[0]):
+        if idx < len(metadata["documents"]):
+            doc = metadata["documents"][idx]
+            meta = metadata["metadatas"][idx]
+            # Convert distance to similarity score (higher is better)
+            similarity = float(dist)  # FAISS returns inner product (already similarity for normalized vectors)
+            pairs.append(f"Source (url={meta.get('url', 'unknown')}, relevance={similarity:.2f}):\n{doc}")
+    
+    retrieved_text = "\n\n".join(pairs)
+    min_similarity = float(distances[0][0]) if len(distances[0]) > 0 else 0.0
+    
+    return retrieved_text, min_similarity
+
+def make_prompt(user_message, retrieved_text):
+    """
+    Construct prompt for OpenAI with user query and retrieved context.
+    """
+    prompt = f"""
+User question:
+{user_message}
+
+Relevant source excerpts:
+{retrieved_text}
+
+Instructions:
+- Use the sources above to answer the question.
+- If the answer is not present, ask clarifying questions and offer to escalate to human support.
+- Keep answer <= 300 words.
+- Be helpful and friendly.
+"""
+    return prompt
+
+def generate_reply(user_message):
+    """
+    Generate reply using RAG pipeline:
+    1. Retrieve relevant documents
+    2. Construct prompt with context
+    3. Call OpenAI
+    4. Return response
+    
+    Args:
+        user_message: User's WhatsApp message
+    
+    Returns:
+        Generated response text
+    """
+    try:
+        retrieved, min_similarity = retrieve_relevant(user_message, k=4)
+        
+        # If similarity is too low, escalate (lower threshold because FAISS uses different scale)
+        if min_similarity < 0.3:  # Adjust threshold as needed for your data
+            return ("I'm not sure I have the right information to answer that. "
+                    "Would you like me to connect you with a human support agent? "
+                    "Please share your email or phone number.")
+        
+        prompt = make_prompt(user_message, retrieved)
+        resp = call_openai(SYSTEM_PROMPT, prompt)
+        
+        return resp
+    except Exception as e:
+        print(f"Error generating reply: {e}")
+        import traceback
+        traceback.print_exc()
+        return "I'm having trouble processing your request. Please try again or contact our support team."
