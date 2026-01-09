@@ -30,23 +30,13 @@ def load_index():
     return index, metadata
 
 SYSTEM_PROMPT = """
-You're a friendly assistant chatting on WhatsApp.
-
-Your vibe:
-- Sound like a real person - warm, helpful, casual but professional
-- Use simple, clear language (no corporate jargon)
-- Keep it brief - people are on their phones
-- Use emojis naturally when it feels right (1-2 max, don't overdo it)
-- Be direct and conversational
-
-Golden rule:
-Only share info from the sources provided. If you don't know something, be honest and offer to connect them with the team.
-
-Avoid:
-- Making up information or guessing
-- Pricing/legal/medical advice  
-- Long paragraphs (keep messages short and scannable)
-- Being overly formal or robotic
+You are a helpful customer support assistant for the company. 
+You must ONLY use the provided source excerpts to answer user questions.
+PROHIBITED: Do NOT invent, guess, or infer information not explicitly present in the sources.
+PROHIBITED: Do NOT answer questions about pricing, legal guarantees, or medical advice.
+If the answer is not in the sources, strictly state you do not know and offer to connect with a human agent.
+Be concise, professional (neutral tone), and friendly.
+Keep your response under 300 words.
 """
 
 def retrieve_relevant(user_message, k=4):
@@ -88,68 +78,54 @@ def retrieve_relevant(user_message, k=4):
     
     return retrieved_text, min_similarity
 
-from bot import memory
-
-def make_prompt(user_message, retrieved_text, history_text=""):
+def make_prompt(user_message, retrieved_text):
     """
-    Construct prompt for WhatsApp-optimized conversational responses.
+    Construct prompt for OpenAI with user query and retrieved context.
     """
     prompt = f"""
-Someone on WhatsApp asked: "{user_message}"
+User question:
+{user_message}
 
-Here's what I found from our website:
+Relevant source excerpts:
 {retrieved_text}
 
-Previous conversation:
-{history_text}
-
-Reply guidelines:
-- Sound like you're chatting with a friend, not sending a corporate email
-- Keep it SHORT - max 2-3 brief paragraphs (mobile screens!)
-- Use line breaks for easy reading
-- Add an emoji if it feels natural (1-2 max)
-- If the info isn't there, just be honest and offer to connect them with the team
-- Be helpful and genuine
+Instructions:
+- Use the sources above to answer the question.
+- If the answer is not present, ask clarifying questions and offer to escalate to human support.
+- Keep answer <= 300 words.
+- Be helpful and friendly.
 """
     return prompt
 
-def generate_reply(user_message, phone_number="unknown"):
+def generate_reply(user_message):
     """
     Generate reply using RAG pipeline:
     1. Retrieve relevant documents
-    2. Construct prompt with context AND history
+    2. Construct prompt with context
     3. Call OpenAI
     4. Return response
     
     Args:
         user_message: User's WhatsApp message
-        phone_number: User's phone number (key for memory)
     
     Returns:
         Generated response text
     """
     try:
-        # Add User message to memory
-        memory.add_message(phone_number, "user", user_message)
-        
-        # Get history
-        history = memory.get_history(phone_number)
-
         retrieved, min_similarity = retrieve_relevant(user_message, k=4)
         
-        # If similarity is too low, we still pass it to the LLM but with a warning (or just rely on the prompt)
-        # We REMOVE the strict early return so that conversational context (Greeting, "My name is...") works.
+        # If similarity is too low, escalate (lower threshold because FAISS uses different scale)
+        if min_similarity < 0.45:  # STRICTER threshold for safety (0.45 is a conservative safe zone for normalized cosine)
+            return ("I'm not sure I have the right information to answer that. "
+                    "Would you like me to connect you with a human support agent? "
+                    "Please share your email or phone number.")
         
-        prompt = make_prompt(user_message, retrieved, history)
+        prompt = make_prompt(user_message, retrieved)
         resp = call_openai(SYSTEM_PROMPT, prompt)
-        
-        # Add Assistant response to memory
-        memory.add_message(phone_number, "assistant", resp)
         
         return resp
     except Exception as e:
         print(f"Error generating reply: {e}")
         import traceback
         traceback.print_exc()
-        return ("Oops, something went wrong on my end 😅 "
-                "Could you try asking again? If it keeps happening, I'll get you to the team!")
+        return "I'm having trouble processing your request. Please try again or contact our support team."

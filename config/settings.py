@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     LLM_MODEL: str = "llama-3.1-70b-versatile"
     WHATSAPP_TOKEN: str
     WHATSAPP_PHONE_ID: str
+    WHATSAPP_APP_SECRET: str
     WHATSAPP_VERIFY_TOKEN: str = "verify_token_val"
     WHATSAPP_API_URL: str = "https://graph.facebook.com/v16.0"
     CHROMA_DIR: str = "./chroma_db"

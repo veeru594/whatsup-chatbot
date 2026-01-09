@@ -98,7 +98,7 @@ def crawl_and_build():
         print("WARNING: No chunks found. Something is wrong.")
         return
 
-    print("Upserting into ChromaDB...")
-    upsert_documents(documents)
+    print("Upserting into ChromaDB (Overwrite Mode)...")
+    upsert_documents(documents, overwrite=True)
 
     print("Done. Vector DB updated successfully.")

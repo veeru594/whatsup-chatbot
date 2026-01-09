@@ -10,11 +10,18 @@ from config.settings import settings
 INDEX_PATH = os.path.join(settings.CHROMA_DIR, "faiss.index")
 METADATA_PATH = os.path.join(settings.CHROMA_DIR, "metadata.pkl")
 
-def load_or_create_index(dimension=384):
+def load_or_create_index(dimension=384, overwrite=False):
     """Load existing FAISS index or create new one."""
     os.makedirs(settings.CHROMA_DIR, exist_ok=True)
     
-    if os.path.exists(INDEX_PATH) and os.path.exists(METADATA_PATH):
+    if overwrite:
+        print("Overwrite mode enabled: Deleting existing index...")
+        if os.path.exists(INDEX_PATH):
+            os.remove(INDEX_PATH)
+        if os.path.exists(METADATA_PATH):
+            os.remove(METADATA_PATH)
+    
+    if os.path.exists(INDEX_PATH) and os.path.exists(METADATA_PATH) and not overwrite:
         print(f"Loading existing index from {INDEX_PATH}")
         index = faiss.read_index(INDEX_PATH)
         with open(METADATA_PATH, 'rb') as f:
@@ -33,12 +40,13 @@ def save_index(index, metadata):
         pickle.dump(metadata, f)
     print(f"Saved index to {INDEX_PATH}")
 
-def upsert_documents(docs):
+def upsert_documents(docs, overwrite=False):
     """
     Upsert documents into FAISS index with embeddings.
     
     Args:
         docs: list of {"id": id, "text": text, "url": url}
+        overwrite: If True, delete existing index and create new one
     """
     if not docs:
         print("No documents to upsert")
@@ -58,7 +66,7 @@ def upsert_documents(docs):
     dimension = embeddings_array.shape[1]
     
     # Load or create index
-    index, metadata = load_or_create_index(dimension)
+    index, metadata = load_or_create_index(dimension, overwrite=overwrite)
     
     # For simplicity, rebuild index from scratch (FAISS doesn't support easy updates)
     # In production, implement proper ID-based updates
