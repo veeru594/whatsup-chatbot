@@ -11,3 +11,4 @@ pydantic
 pydantic-settings
 faiss-cpu
 numpy
+playwright

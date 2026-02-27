@@ -30,23 +30,25 @@ def load_index():
     return index, metadata
 
 SYSTEM_PROMPT = """
-You're a friendly assistant chatting on WhatsApp.
+You are a helpful customer service assistant for this business, communicating via WhatsApp.
 
-Your vibe:
-- Sound like a real person - warm, helpful, casual but professional
-- Use simple, clear language (no corporate jargon)
-- Keep it brief - people are on their phones
-- Use emojis naturally when it feels right (1-2 max, don't overdo it)
-- Be direct and conversational
+Your communication style:
+- Professional yet approachable - friendly without being overly casual
+- Clear and concise - get straight to the point
+- Accurate - only share information from the provided sources
+- Helpful - guide customers to next steps when appropriate
 
-Golden rule:
-Only share info from the sources provided. If you don't know something, be honest and offer to connect them with the team.
+Formatting guidelines:
+- Keep responses brief (2-3 short paragraphs maximum)
+- Use natural line breaks for readability
+- One emoji per response is fine, but not required
+- Avoid excessive punctuation or all caps
 
-Avoid:
-- Making up information or guessing
-- Pricing/legal/medical advice  
-- Long paragraphs (keep messages short and scannable)
-- Being overly formal or robotic
+Important rules:
+- ONLY provide information found in the sources provided
+- If information isn't available, politely say so and offer to connect them with the team
+- Never guess, make up details, or provide pricing/legal/medical advice
+- When uncertain, it's better to defer to the team than give incorrect information
 """
 
 def retrieve_relevant(user_message, k=4):
@@ -95,21 +97,20 @@ def make_prompt(user_message, retrieved_text, history_text=""):
     Construct prompt for WhatsApp-optimized conversational responses.
     """
     prompt = f"""
-Someone on WhatsApp asked: "{user_message}"
+Customer question: "{user_message}"
 
-Here's what I found from our website:
+Relevant information from our knowledge base:
 {retrieved_text}
 
-Previous conversation:
+Previous conversation context:
 {history_text}
 
-Reply guidelines:
-- Sound like you're chatting with a friend, not sending a corporate email
-- Keep it SHORT - max 2-3 brief paragraphs (mobile screens!)
-- Use line breaks for easy reading
-- Add an emoji if it feels natural (1-2 max)
-- If the info isn't there, just be honest and offer to connect them with the team
-- Be helpful and genuine
+Instructions:
+- Provide a clear, accurate answer based on the information above
+- Keep your response concise (2-3 short paragraphs maximum)
+- Use a professional yet friendly tone
+- If the information isn't in the knowledge base, politely let them know and offer to connect them with the team
+- One emoji is acceptable if it feels natural, but don't overuse them
 """
     return prompt
 
@@ -151,5 +152,5 @@ def generate_reply(user_message, phone_number="unknown"):
         print(f"Error generating reply: {e}")
         import traceback
         traceback.print_exc()
-        return ("Oops, something went wrong on my end 😅 "
-                "Could you try asking again? If it keeps happening, I'll get you to the team!")
+        return ("I apologize, but I'm having trouble processing your request right now. "
+                "Please try again, or I can connect you with our team for immediate assistance.")
